@@ -4,3 +4,18 @@ nzbverify
 ``nzbverify`` is a command-line tool and library for verifying the integrity of
 an NZB file.  It is capable of supporting both standard and SSL-encrypted NNTP
 connections and employs threads for increased verification speed.
+
+Usage
+-----
+
+The example below reads the NNTP server information from ``~/.netrc``, connects
+via port 443 (using SSL implicitly) and opens 15 connections to the server::
+
+  $ nzbverify -P 443 -n 15 tests/nzbs/ubuntu-12_04-dvd-amd64_iso.nzb 
+  nzbverify version 0.2.0, Copyright (C) 2012 Weston Nielson <wnielson@github>
+  Created 15 threads
+  Parsing NZB: tests/nzbs/ubuntu-12_04-dvd-amd64_iso.nzb
+  Found 43 files and 2878 segments totalling 1.75 GB
+  Available: 2878 [100.00%], Missing:    0 [0.00%], Total: 2878 [100.00%]
+  Result: all 2878 segments available
+  Verification took 7.21387386322 seconds
