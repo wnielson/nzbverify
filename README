@@ -1,0 +1,6 @@
+nzbverify
+=========
+
+``nzbverify`` is a command-line tool and library for verifying the integrity of
+an NZB file.  It is capable of supporting both standard and SSL-encrypted NNTP
+connections and employs threads for increased verification speed.
