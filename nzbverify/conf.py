@@ -3,11 +3,11 @@ import os
 
 DEFAULT_CONFIG_PATHS = ['~/.nzbverify', '~/.netrc']
 
-def get_config(config=None):
+def get_config(config=None, defaults=DEFAULT_CONFIG_PATHS):
     config_paths = []
     if config is not None:
         config_paths.append(config)
-    config_paths.extend(DEFAULT_CONFIG_PATHS)
+    config_paths.extend(defaults)
     
     conf = None
     for path in config_paths:
