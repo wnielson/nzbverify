@@ -5,15 +5,36 @@ nzbverify
 an NZB file.  It is capable of supporting both standard and SSL-encrypted NNTP
 connections and employs threads for increased verification speed.
 
+As of version 0.3.0 it also supports multiple servers, including primary and
+backup servers.
+
 Usage
 -----
 
-The example below reads the NNTP server information from ``~/.netrc``, connects
-via port 443 (using SSL implicitly) and opens 15 connections to the server::
+As of version 0.3.0, a configuration file is required.  The configurtion file
+should be formatted as a "netrc" file.  Here is an example configuration,
+including both a primary and a backup server:
 
-  $ nzbverify -P 443 -n 15 tests/nzbs/ubuntu-12_04-dvd-amd64_iso.nzb 
-  nzbverify version 0.2.0, Copyright (C) 2012 Weston Nielson <wnielson@github>
-  Created 15 threads
+	machine ssl.mynewshost.com
+		login		username1
+		password	123456789
+		account		port=443,connections=20,ssl=true
+
+	machine news.somenewshost.net
+		login		username2
+		password 	987654321
+		account		port=119,connections=2,backup=true,ssl=false
+
+
+The example below reads the NNTP server information from ``~/.netrc``::
+
+  $ nzbverify tests/nzbs/ubuntu-12_04-dvd-amd64_iso.nzb
+  nzbverify version 0.3.0, Copyright (C) 2014 Weston Nielson <wnielson@github>
+  Found 1 primary host
+     ssl.mynewshost.com
+  Found 1 backup host
+     news.somenewshost.net
+  Created 22/22 threads
   Parsing NZB: tests/nzbs/ubuntu-12_04-dvd-amd64_iso.nzb
   Found 43 files and 2878 segments totalling 1.75 GB
   Available: 2878 [100.00%], Missing:    0 [0.00%], Total: 2878 [100.00%]
