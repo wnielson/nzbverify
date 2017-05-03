@@ -152,6 +152,6 @@ class NNTP(nntplib.NNTP):
             use_ssl = True
 
         if _have_ssl and use_ssl:
-            log.debug("Using SSL")
+            log.info("Using SSL")
             return ssl.wrap_socket(sock, ssl_version=ssl.PROTOCOL_TLSv1)
         return sock

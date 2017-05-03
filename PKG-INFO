@@ -1,0 +1,15 @@
+Metadata-Version: 1.0
+Name: nzbverify
+Version: 0.2.0
+Summary: Utility for verifying the completeness of an NZB.
+Home-page: http://pypi.python.org/pypi/nzbverify/
+Author: Weston Nielson
+Author-email: <wnielson@github>
+License: LICENSE
+Description: nzbverify
+        =========
+        
+        ``nzbverify`` is a command-line tool and library for verifying the integrity of
+        an NZB file.  It is capable of supporting both standard and SSL-encrypted NNTP
+        connections and employs threads for increased verification speed.
+Platform: UNKNOWN

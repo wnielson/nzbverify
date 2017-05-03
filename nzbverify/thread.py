@@ -1,11 +1,6 @@
-import logging
 import threading
 import nntp
 import nntplib
-
-from server import ConnectionClosedException
-
-log = logging.getLogger("thread")
 
 def stop_threads(threads):
     """
@@ -19,60 +14,50 @@ class SegmentCheckerThread(threading.Thread):
     """
     Threaded NZB Segment Checker.
     """
-    def __init__(self, id, segments, missing, server):
-        self.id         = id
-        self.segments   = segments        # Queue.Queue
-        self.missing    = missing         # Queue.Queue
-        self.server     = server
-        self.stop       = False           # Set to True to stop thread
-
-        threading.Thread.__init__(self, name="thread-%d" % id)
-
+    def __init__(self, num, segments, missing, credentials):
+        threading.Thread.__init__(self)
+        self.num          = num
+        self.segments     = segments        # Queue.Queue
+        self.missing      = missing         # Queue.Queue
+        self.credentials  = credentials
+        self.stop         = False           # Set to True to stop thread
+        
     def run(self):
-        connection = self.server.create_connection()
+        self.server = nntp.NNTP(**self.credentials)
         try:
             while True:
                 if self.stop:
-                    connection.quit()
+                    self.server.quit()
                     return
-
-                segment = None
-                q       = None
-
-                if self.server.conf.get("backup", False):
-                    # Backup server - only check for segments that have been
-                    # explcitly passed to us
-                    try:
-                        segment = self.server.segments.get(True, 1)
-                        q       = self.server.segments
-                    except:
-                        pass
-
-                else:
-                    # Try to get a segment from the server's segment queue
-                    try:
-                        segment = self.server.segments.get(False)
-                        q       = self.server.segments
-                    except:
-                        # Try to grab a segment from the global queue
-                        segment = self.segments.get(False)
-                        q       = self.segments
-
-                if not segment:
-                    continue
-
+                
+                # Try to grab a segment from queue
+                f, segment, bytes = self.segments.get(False)
+                
+                # Check for the article on the server
                 try:
-                    self.server.check_segment(connection, segment, self.segments, self.missing)
-                except ConnectionClosedException, e:
-                    connection = self.server.create_connection()
+                    self.server.stat(segment)
+                    #print "Found: %s" % segment
+                except nntplib.NNTPTemporaryError, e:
+                    # Error code 430 is "No such article"
+                    error = nntp.get_error_code(e)
+                    if error == '430':
+                        # Found missing segment                    
+                        self.missing.put((f, segment, bytes))
+                        self.missing.task_done()
+                        #print "Missing: %s" % segment
+                    else:
+                        # Some other error, put the segment back in the
+                        # queue to be checked again
+                        print "Error: %s" % e
+                        self.segments.put(segment)
                 except Exception, e:
-                    log.error("Unknown error: %s" % e)
-
-                if q:
-                    q.task_done()
-
+                    print "Unknown error: %s" % e
+                    return
+                
+                # Signals to queue that this task is done
+                self.segments.task_done()
         except Exception, e:
             try:
-                connection.quit()
+                self.server.quit()
             except:
                 pass

@@ -7,8 +7,11 @@ TODO:
     * Add date range in NZB info printout
     * Add debug mode
     * Add timing info
+    * Add SSL support
     * Better handling of credentials
+    * Use getopt
     * Check for existance of NZB file before starting threads
+    * Enable default config files (~/.nzbverify, ~/.netrc)
 """
 from __future__ import division
 
@@ -26,13 +29,11 @@ import time
 sys.path.append('../')
 
 from nzbverify import __author__, __version__, conf, thread
-from nzbverify.server import Server
 
 try:
     from xml.etree.cElementTree import iterparse
 except:
     from xml.etree.ElementTree import iterparse
-
 
 __prog__ = "nzbverify"
 
@@ -41,9 +42,13 @@ Usage:
     %s [options] <NZB file>
 
 Options:
-    -c <config>     : Config file to use (defaults: ~/.nzbverify, ~/.netrc)
-    -l <log>        : Log messages to a specified file
-    -n <log level>  : Changes the level of logging (higher values equals more logging)
+    -s<server>      : NNTP server
+    -u<username>    : NNTP username
+    -p              : NNTP password, will be prompted for
+    -P<port>        : NNTP port
+    -c<config>      : Config file to use (defaults: ~/.nzbverify, ~/.netrc)
+    -n<threads>     : Number of NNTP connections to use
+    -e              : Use SSL/TLS encryption
     -h              : Show help text and exit
 """
 
@@ -66,13 +71,13 @@ class ProgressBar(object):
         self.segments = segments
         self.missing = missing
         self.segment_count = segments.qsize()
-
+        
         digits = len(str(self.segment_count))
         self._msg = ("Available: %%0%ds [%%s], "
                      "Missing: %%0%ds [%%s], "
                      "Total: %%0%ds [%%s]" %
                      (digits,digits,digits))
-
+    
     def update(self):
         tnum = self.segment_count - self.segments.qsize()
         tpct = "%0.2f%%" % ((tnum/self.segment_count)*100.00)
@@ -83,19 +88,19 @@ class ProgressBar(object):
         msg = self._msg % (anum, apct, mnum, mpct, tnum, tpct)
         sys.stdout.write("\r%s" % msg)
         sys.stdout.flush()
-
+    
     def finish(self):
         self.update()
         sys.stdout.write("\n")
 
-def main(nzb, config):
+def main(nzb, num_connections, nntp_kwargs):    
     threads     = []
     files       = []
     seg_count   = 0
     bytes_total = 0
     segments    = Queue.Queue()
     missing     = Queue.Queue()
-
+    
     # Listen for exit
     def signal_handler(signal, frame):
         sys.stdout.write('\n')
@@ -104,64 +109,22 @@ def main(nzb, config):
         thread.stop_threads(threads)
         sys.stdout.write("done\n")
         sys.exit(0)
-
+    
     # TODO: Listen to other signals
     signal.signal(signal.SIGINT, signal_handler)
-
-
-    # Determine server priority.  We do this by considering two types of
-    # servers: primary and backup.  Primary servers will be used to check for
-    # all segments.  If a segment is missing from all available primary servers
-    # then backup servers will be used to check for the missing segments.  Only
-    # after a segment is verified as missing from all primary and backup servers
-    # do we consider is a missing segment.
-    primary_servers = []
-    backup_servers  = []
-    num_connections = 0
-    for host, settings in config.items():
-        if settings.get("backup", False):
-            backup_servers.append(host)
-        else:
-            primary_servers.append(host)
-
-        num_connections += settings.get("connections", 0)
-
-    print "Found %d primary host%s" % (len(primary_servers), len(primary_servers) != 1 and "s" or "")
-    for host in primary_servers:
-        print "  ", host
-
-    print "Found %d backup host%s" % (len(backup_servers), len(backup_servers) != 1 and "s" or "")
-    for host in backup_servers:
-        print "  ", host
-
-    #print "Creating %d threads" % num_connections
-
-    priority = 0
-    for host in primary_servers:
-        config[host]["priority"] = priority
-        priority += 1
-
-    for host in backup_servers:
-        config[host]["priority"] = priority
-        priority += 1
-
+    
     # Spawn some threads
-    tid = 0
-    for host, settings in config.items():
-        server = Server(host, settings)
-
-        for i in range(settings.get("connections", 0)):
-            try:
-                t = thread.SegmentCheckerThread(tid, segments, missing, server)
-                t.setDaemon(True)
-                t.start()
-                threads.append(t)
-                tid += 1
-            except:
-                break
-
-    print "Created %d/%d threads" % (tid, num_connections)
-
+    for i in range(num_connections):
+        try:
+            t = thread.SegmentCheckerThread(i, segments, missing, nntp_kwargs)
+            t.setDaemon(True)
+            t.start()
+            threads.append(t)
+        except:
+            break
+    
+    print "Created %d threads" % (i+1)
+    
     # Parse NZB and populate the Queue
     print "Parsing NZB: %s" % nzb
     for event, elem in iterparse(nzb, events=("start", "end")):
@@ -172,20 +135,20 @@ def main(nzb, config):
             bytes_total += bytes
             segments.put((files[-1], '<%s>' % elem.text, bytes))
             seg_count += 1
-
+    
     size, unit = get_size(bytes_total)
-    print "Found %d files and %d segments totaling %s %s" % (len(files), seg_count, size, unit)
-
+    print "Found %d files and %d segments totalling %s %s" % (len(files), seg_count, size, unit)
+    
     pbar = ProgressBar(segments, missing)
-
+    
     while not segments.empty():
         pbar.update()
         time.sleep(0.1)
-
+    
     pbar.finish()
-
+    
     missing.join()
-
+    
     num_missing = missing.qsize()
     if num_missing > 0:
         missing_bytes = 0
@@ -194,65 +157,89 @@ def main(nzb, config):
             f, seg, bytes = missing.get()
             missing_bytes += bytes
             print '\tfile="%s", segment="%s"' % (f, seg)
-
+        
         size, unit = get_size(missing_bytes)
         print "Missing %s %s" % (size, unit)
     else:
         print "Result: all %d segments available" % seg_count
-
+    
     thread.stop_threads(threads)
 
 def print_usage():
     print __usage__ % __prog__
 
 def run():
-    print "nzbverify version %s, Copyright (C) 2014 %s" % (__version__, __author__)
-
-    config    = None
-    log_file  = None
-    log_level = logging.INFO
-
+    print "nzbverify version %s, Copyright (C) 2012 %s" % (__version__, __author__)
+        
+    num_connections = DEFAULT_NUM_CONNECTIONS
+    config          = None
+    nntp_kwargs     = {
+        'host':     None,
+        'port':     nntplib.NNTP_PORT,
+        'user':     None,
+        'password': None,
+        'use_ssl':  None,
+        'timeout':  10
+    }
+    
     # Parse command line options
-    opts, args = getopt.getopt(sys.argv[1:], 'c:l:n:h', ["config=", "log=", "level=", "help"])
+    opts, args = getopt.getopt(sys.argv[1:], 's:u:P:n:c:eph', ["server=", "username=",  "port=", "connections=", "config=", "ssl", "password", "help"])
     for o, a in opts:
         if o in ("-h", "--help"):
             print __help__
             print_usage()
             sys.exit(0)
+        elif o in ("-s", "--server"):
+            nntp_kwargs['host'] = a
+        elif o in ("-u", "--username"):
+            nntp_kwargs['user'] = a
+        elif o in ("-p", "--password"):
+            nntp_kwargs['password'] = getpass.getpass("Password: ")
+        elif o in ("-e", "--ssl"):
+            nntp_kwargs['use_ssl'] = True
+        elif o in ("-P", "--port"):
+            try:
+                nntp_kwargs['port'] = int(a)
+            except:
+                print "Error: invalid port '%s'" % a
+                sys.exit(0)
+        elif o in ("-n", "--connections"):
+            try:
+                num_connections = int(a)
+            except:
+                print "Error: invalid number of connections '%s'" % a
+                sys.exit(0)
         elif o in ("-c", "--config"):
             config = a
-        elif o in ("-l", "--log"):
-            log_file = a
-        elif o in ("-n", "--level"):
-            try:
-                log_level = int(n)
-            except:
-                log_level = 0
-
-            if log_level > 0:
-                log_level = logging.DEBUG
-            else:
-                log_level = logging.INFO
-
-    if log_file:
-        logging.basicConfig(filename=log_file, level=log_level, format="%(asctime)s [%(levelname)s] - [%(threadName)10s] - %(name)s - %(message)s")
-
+    
     # Get the NZB
     if len(args) < 1:
         print_usage()
         sys.exit(0)
     nzb = args[0]
-
-    # Load NNTP details from config files
+    
+    # See if we need to load certain NNTP details from config files
+    # A host is required
     config = conf.get_config(config)
-    if not config:
-        print "Error: No config file found"
+    if not nntp_kwargs['host'] and not config:
+        print "Error: no server details provided"
         sys.exit(0)
-
-    if len(config) < 1:
-        print "Error: Didn't find any servers"
-        sys.exit(0)
-
+    
+    if config:
+        credentials = config.authenticators(nntp_kwargs.get('host'))
+        if not credentials:
+            if not config.hosts:
+                print "Error: Could not determine server details"
+                sys.exit(0)
+            
+            # Just use the first entry
+            host, credentials = config.hosts.items()[0]
+            nntp_kwargs['host'] = host
+        
+        if not nntp_kwargs['user'] and not nntp_kwargs['password']:
+            nntp_kwargs['user'] = credentials[0]
+            nntp_kwargs['password'] = credentials[2]
+    
     start = time.time()
-    main(nzb, config)
+    main(nzb, num_connections, nntp_kwargs)
     print "Verification took %s seconds" % (time.time() - start)
