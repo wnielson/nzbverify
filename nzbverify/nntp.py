@@ -112,17 +112,16 @@ class NNTP(nntplib.NNTP):
             self.nntp_version = 1
             self.nntp_implementation = None
             try:
-                resp, caps = self.capabilities()
+                resp, self._caps = self.capabilities()
             except nntplib.NNTPPermanentError:
                 # Server doesn't support capabilities
                 self._caps = {}
         else:
-            self._caps = caps
-            if 'VERSION' in caps:
+            if 'VERSION' in self._caps:
                 # The server can advertise several supported versions,
                 # choose the highest.
-                self.nntp_version = max(map(int, caps['VERSION']))
-            if 'IMPLEMENTATION' in caps:
+                self.nntp_version = max(map(int, self._caps['VERSION']))
+            if 'IMPLEMENTATION' in self._caps:
                 self.nntp_implementation = ' '.join(caps['IMPLEMENTATION'])
         return self._caps
   
