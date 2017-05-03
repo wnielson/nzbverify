@@ -1,6 +1,6 @@
 Metadata-Version: 1.0
 Name: nzbverify
-Version: 0.2.0
+Version: 0.2.1
 Summary: Utility for verifying the completeness of an NZB.
 Home-page: http://pypi.python.org/pypi/nzbverify/
 Author: Weston Nielson
