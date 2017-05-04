@@ -11,6 +11,6 @@ setup(
     url='http://pypi.python.org/pypi/nzbverify/',
     license='LICENSE',
     description='Utility for verifying the completeness of an NZB.',
-    long_description=open('README').read(),
+    long_description=open('README.md').read(),
     scripts=['bin/nzbverify']
 )
